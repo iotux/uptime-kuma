@@ -79,9 +79,11 @@ jobs:
       if: runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true'
       run: |
         docker rm -f kuma-systemd 2>/dev/null || true
-        # The fix: Permissive security flags to prevent crash
+        
+        # Start container with Cgroup Host Namespace (REQUIRED for GitHub Actions / Cgroup v2)
         docker run --privileged --detach --name kuma-systemd \
           --env container=docker \
+          --cgroupns=host \
           --security-opt seccomp=unconfined \
           --security-opt apparmor=unconfined \
           --tmpfs /run --tmpfs /run/lock \
@@ -89,7 +91,20 @@ jobs:
           -v "$PWD":/workspace \
           -w /workspace \
           kuma-systemd-image
+          
+        echo "⏳ Waiting 5 seconds for systemd to boot..."
         sleep 5
+        
+        # VERIFICATION: Check if it is actually running
+        if [ "$(docker inspect -f '{{.State.Running}}' kuma-systemd)" != "true" ]; then
+            echo "❌ CRITICAL: Container crashed immediately!"
+            echo "--- CONTAINER LOGS (Why did it die?) ---"
+            docker logs kuma-systemd
+            echo "----------------------------------------"
+            exit 1
+        else
+            echo "✅ Container is healthy and running!"
+        fi
 
     - name: Install Node.js inside container
       if: runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true'
