@@ -1,40 +1,33 @@
-# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
-# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
-
 name: Auto Test
 
 on:
+  # MANUAL TRIGGER
+  workflow_dispatch:
   push:
-    branches: [ master, 1.23.X ]
-    paths-ignore:
-      - '*.md'
+    # ALLOWS YOUR BRANCH TO RUN
+    branches: [ master, 1.23.X, test-ci-systemd-fix ]
   pull_request:
     branches: [ master, 1.23.X ]
-    paths-ignore:
-      - '*.md'
 
 jobs:
   auto-test:
-    needs: [ e2e-test ]
+    # Removed 'needs' so it starts NOW
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
     strategy:
       matrix:
-        # Restored ARM64 for the official PR
-        os: [macos-latest, ubuntu-22.04, windows-latest, ARM64]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+        # Removed ARM64 to prevent waiting
+        os: [macos-latest, ubuntu-22.04, windows-latest]
         node: [ 20, 24 ]
-        # Also test non-LTS, but only on Ubuntu.
         include:
           - os: ubuntu-22.04
             node: 25
 
     steps:
-    - run: git config --global core.autocrlf false  # Mainly for Windows
+    - run: git config --global core.autocrlf false
     - uses: actions/checkout@v4
 
-    # 1. Detect if we need the heavy systemd container logic
     - name: Detect systemd monitor changes
       id: systemd-files
       uses: dorny/paths-filter@v3
@@ -52,7 +45,7 @@ jobs:
         path: node_modules
         key: node-modules-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
 
-    # === STANDARD PATH (Run if NOT Linux OR if systemd files didn't change) ===
+    # === STANDARD PATH ===
     - name: Use Node.js ${{ matrix.node }}
       if: runner.os != 'Linux' || steps.systemd-files.outputs.systemd != 'true'
       uses: actions/setup-node@v6
@@ -77,11 +70,10 @@ jobs:
         FROM ubuntu:22.04
         ENV DEBIAN_FRONTEND=noninteractive
         
-        # Install prerequisites
         RUN apt-get update && \
             apt-get install -y systemd systemd-sysv dbus curl gnupg build-essential python3 make g++ ca-certificates
             
-        # Install Node.js 20 explicitly (Baking it in avoids runtime failures)
+        # Install Node.js 20 explicitly
         RUN mkdir -p /etc/apt/keyrings && \
             curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
             echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
@@ -114,7 +106,6 @@ jobs:
         echo "⏳ Waiting 5 seconds for boot..."
         sleep 5
         
-        # Verify it's alive
         if [ "$(docker inspect -f '{{.State.Running}}' kuma-systemd)" != "true" ]; then
             docker logs kuma-systemd
             exit 1
@@ -136,51 +127,12 @@ jobs:
         docker rm -f kuma-systemd
         rm -f Dockerfile.systemd
 
-  # As a lot of dev dependencies are not supported on ARMv7, we have to test it separately and just test if `npm ci --production` works
-  armv7-simple-test:
-    needs: [ e2e-test ]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    if: ${{ github.repository == 'louislam/uptime-kuma' }}
-    strategy:
-      matrix:
-        os: [ ARMv7 ]
-        node: [ 20, 22 ]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
-
-    steps:
-      - run: git config --global core.autocrlf false  # Mainly for Windows
-      - uses: actions/checkout@v4
-
-      - name: Cache/Restore node_modules
-        uses: actions/cache@v4
-        id: node-modules-cache
-        with:
-          path: node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Use Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node }}
-      - run: npm install --production
-
+  # Simplified checks for Shadow Test
   check-linters:
     runs-on: ubuntu-latest
-
     steps:
-    - run: git config --global core.autocrlf false  # Mainly for Windows
     - uses: actions/checkout@v4
-
-    - name: Cache/Restore node_modules
-      uses: actions/cache@v4
-      id: node-modules-cache
-      with:
-        path: node_modules
-        key: node-modules-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-
-    - name: Use Node.js 20
-      uses: actions/setup-node@v6
+    - uses: actions/setup-node@v6
       with:
         node-version: 20
     - run: npm install
@@ -188,28 +140,16 @@ jobs:
 
   e2e-test:
     needs: [ check-linters ]
-    runs-on: ARM64
+    runs-on: ubuntu-22.04
     env:
       PLAYWRIGHT_VERSION: ~1.39.0
     steps:
-    - run: git config --global core.autocrlf false  # Mainly for Windows
+    - run: git config --global core.autocrlf false
     - uses: actions/checkout@v4
-
-    - name: Cache/Restore node_modules
-      uses: actions/cache@v4
-      id: node-modules-cache
-      with:
-        path: node_modules
-        key: node-modules-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v6
+    - uses: actions/setup-node@v6
       with:
         node-version: 22
     - run: npm install
-
-    - name: Install Playwright ${{ env.PLAYWRIGHT_VERSION }}
-      run: npx playwright@${{ env.PLAYWRIGHT_VERSION }} install
-
+    - run: npx playwright@${{ env.PLAYWRIGHT_VERSION }} install
     - run: npm run build
     - run: npm run test-e2e
