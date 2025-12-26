@@ -132,8 +132,6 @@ jobs:
         docker rm -f kuma-systemd
         rm -f Dockerfile.systemd
 
-  # As a lot of dev dependencies are not supported on ARMv7, we have to test it separately and just test if `npm ci --production` works
-
   check-linters:
     runs-on: ubuntu-latest
 
@@ -182,4 +180,4 @@ jobs:
 
     - run: npm run build
     - run: npm run test-e2e
-    
+
