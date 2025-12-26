@@ -33,6 +33,17 @@ jobs:
     - run: git config --global core.autocrlf false  # Mainly for Windows
     - uses: actions/checkout@v4
 
+    # 1. Detect if we need the heavy systemd container logic
+    - name: Detect systemd monitor changes
+      id: systemd-files
+      uses: dorny/paths-filter@v3
+      with:
+        filters: |
+          systemd:
+            - 'server/monitor-types/system-service.js'
+            - 'test/backend-test/test-system-service.js'
+            - '.github/workflows/auto-test.yml'
+
     - name: Cache/Restore node_modules
       uses: actions/cache@v4
       id: node-modules-cache
@@ -40,16 +51,82 @@ jobs:
         path: node_modules
         key: node-modules-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
 
+    # === STANDARD PATH (Run if NOT Linux OR if systemd files didn't change) ===
     - name: Use Node.js ${{ matrix.node }}
+      if: runner.os != 'Linux' || steps.systemd-files.outputs.systemd != 'true'
       uses: actions/setup-node@v6
       with:
         node-version: ${{ matrix.node }}
+
     - run: npm install
+      if: runner.os != 'Linux' || steps.systemd-files.outputs.systemd != 'true'
     - run: npm run build
+      if: runner.os != 'Linux' || steps.systemd-files.outputs.systemd != 'true'
     - run: npm run test-backend
+      if: runner.os != 'Linux' || steps.systemd-files.outputs.systemd != 'true'
       env:
         HEADLESS_TEST: 1
         JUST_FOR_TEST: ${{ secrets.JUST_FOR_TEST }}
+
+    # === SYSTEMD PATH (Run ONLY on Linux AND if systemd files changed) ===
+    # We construct a Dockerfile on the fly to ensure systemd is installed
+    - name: Build Systemd Docker Image
+      if: runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true'
+      run: |
+        cat <<EOF > Dockerfile.systemd
+        FROM ubuntu:22.04
+        ENV DEBIAN_FRONTEND=noninteractive
+        # Install systemd, dbus, and build deps
+        RUN apt-get update && \
+            apt-get install -y systemd systemd-sysv dbus curl gnupg build-essential python3 make g++ && \
+            apt-get clean
+        CMD ["/sbin/init"]
+        EOF
+        docker build -t kuma-systemd-image -f Dockerfile.systemd .
+
+    - name: Start systemd container
+      if: runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true'
+      run: |
+        docker rm -f kuma-systemd 2>/dev/null || true
+        docker run --privileged --detach --name kuma-systemd \
+          --tmpfs /run --tmpfs /run/lock \
+          -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+          -v "$PWD":/workspace \
+          -w /workspace \
+          kuma-systemd-image
+        sleep 3
+
+    - name: Install Node.js inside container
+      if: runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true'
+      env:
+        NODE_MAJOR: ${{ matrix.node }}
+      run: |
+        docker exec kuma-systemd bash -s <<EOF
+        set -e
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+        apt-get update
+        apt-get install -y nodejs
+        node -v
+        npm -v
+        EOF
+
+    - name: Backend tests with systemd
+      if: runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true'
+      env:
+        HEADLESS_TEST: 1
+        JUST_FOR_TEST: ${{ secrets.JUST_FOR_TEST }}
+      run: |
+        docker exec kuma-systemd npm install
+        docker exec kuma-systemd npm run build
+        docker exec -e HEADLESS_TEST=1 -e JUST_FOR_TEST="$JUST_FOR_TEST" kuma-systemd npm run test-backend
+
+    - name: Cleanup systemd container
+      if: ${{ always() && runner.os == 'Linux' && steps.systemd-files.outputs.systemd == 'true' }}
+      run: |
+        docker rm -f kuma-systemd
+        rm -f Dockerfile.systemd
 
   # As a lot of dev dependencies are not supported on ARMv7, we have to test it separately and just test if `npm ci --production` works
   armv7-simple-test:
@@ -128,3 +205,4 @@ jobs:
 
     - run: npm run build
     - run: npm run test-e2e
+
