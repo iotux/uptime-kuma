@@ -5,7 +5,7 @@ name: Auto Test
 
 on:
   push:
-    branches: [ master, 1.23.X ]
+    branches: [ master, 1.23.X, test-ci-systemd-fix ]
     paths-ignore:
       - '*.md'
   pull_request:
