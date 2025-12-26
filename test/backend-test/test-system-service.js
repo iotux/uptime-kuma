@@ -3,19 +3,18 @@ const assert = require("node:assert");
 const { SystemServiceMonitorType } = require("../../server/monitor-types/system-service");
 const { DOWN, UP } = require("../../src/util");
 const process = require("process");
-const { execSync } = require('child_process');
-const test = require('node:test');
+const { execSync } = require("child_process");
 
 // GUARD CLAUSE: Skip test if not on Systemd (Linux) or Windows
 let shouldRun = false;
 
-if (process.platform === 'win32') {
+if (process.platform === "win32") {
     shouldRun = true;
-} else if (process.platform === 'linux') {
+} else if (process.platform === "linux") {
     try {
         // Check if PID 1 is systemd (or init which maps to systemd in our container)
-        const pid1Comm = execSync('ps -p 1 -o comm=', { encoding: 'utf-8' }).trim();
-        if (pid1Comm === 'systemd' || pid1Comm === 'init') {
+        const pid1Comm = execSync("ps -p 1 -o comm=", { encoding: "utf-8" }).trim();
+        if (pid1Comm === "systemd" || pid1Comm === "init") {
             shouldRun = true;
         }
     } catch (e) {
