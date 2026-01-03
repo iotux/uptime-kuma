@@ -11,7 +11,6 @@ class Telegram extends NotificationProvider {
         const okMsg = "Sent Successfully.";
         const url = notification.telegramServerUrl ?? "https://api.telegram.org";
 
-
         try {
             let params = {
                 chat_id: notification.telegramChatID,
@@ -26,6 +25,9 @@ class Telegram extends NotificationProvider {
 
             if (notification.telegramUseTemplate) {
                 if (notification.telegramTemplateParseMode === "MarkdownV2") {
+                    if (typeof msg !== "string") {
+                        msg = JSON.stringify(msg);
+                    }
                     msg = this.escapeMarkdownV2(msg);
                     monitorJSON = this.escapeMarkdownV2(monitorJSON);
                     heartbeatJSON = this.escapeMarkdownV2(heartbeatJSON);
