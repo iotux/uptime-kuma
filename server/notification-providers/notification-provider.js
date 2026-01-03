@@ -60,9 +60,10 @@ class NotificationProvider {
      * @param {string} msg the message that will be included in the context
      * @param {?object} monitorJSON Monitor details (For Up/Down/Cert-Expiry only)
      * @param {?object} heartbeatJSON Heartbeat details (For Up/Down only)
+     * @param {string} parseMode The parse mode (e.g. MarkdownV2)
      * @returns {Promise<string>} rendered template
      */
-    async renderTemplate(template, msg, monitorJSON, heartbeatJSON) {
+    async renderTemplate(template, msg, monitorJSON, heartbeatJSON, parseMode = "") {
         const engine = new Liquid({
             root: "./no-such-directory-uptime-kuma",
             relativeReference: false,
@@ -84,6 +85,10 @@ class NotificationProvider {
             serviceStatus = (heartbeatJSON["status"] === DOWN) ? "🔴 Down" : "✅ Up";
         }
 
+        if (parseMode === "MarkdownV2") {
+            monitorHostnameOrURL = this.escapeMarkdownV2(monitorHostnameOrURL);
+        }
+
         const context = {
             // for v1 compatibility, to be removed in v3
             "STATUS": serviceStatus,
@@ -100,6 +105,19 @@ class NotificationProvider {
         };
 
         return engine.render(parsedTpl, context);
+    }
+
+    /**
+     * Escape special characters for Telegram MarkdownV2
+     * @param {string} text The text to escape
+     * @returns {string} The escaped text
+     */
+    escapeMarkdownV2(text) {
+        if (typeof text !== "string") {
+            return text;
+        }
+        // Reserved characters: _ * [ ] ( ) ~ ` > # + - = | { } . !
+        return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
     }
 
     /**

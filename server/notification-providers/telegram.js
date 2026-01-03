@@ -24,7 +24,7 @@ class Telegram extends NotificationProvider {
             }
 
             if (notification.telegramUseTemplate) {
-                params.text = await this.renderTemplate(notification.telegramTemplate, msg, monitorJSON, heartbeatJSON);
+                params.text = await this.renderTemplate(notification.telegramTemplate, msg, monitorJSON, heartbeatJSON, notification.telegramTemplateParseMode);
 
                 if (notification.telegramTemplateParseMode !== "plain") {
                     params.parse_mode = notification.telegramTemplateParseMode;
@@ -34,6 +34,7 @@ class Telegram extends NotificationProvider {
             let config = this.getAxiosConfigWithProxy();
 
             await axios.post(`${url}/bot${notification.telegramBotToken}/sendMessage`, params, config);
+            console.log("MarkdownV2:", params, config);
             return okMsg;
 
         } catch (error) {
