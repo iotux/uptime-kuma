@@ -28,6 +28,7 @@ class Telegram extends NotificationProvider {
                     if (typeof msg !== "string") {
                         msg = JSON.stringify(msg);
                     }
+                    // {{ msg }} escaping covers for status, name and hostnameOrURL
                     msg = this.escapeMarkdownV2(msg);
                     monitorJSON = this.escapeMarkdownV2(monitorJSON);
                     heartbeatJSON = this.escapeMarkdownV2(heartbeatJSON);
@@ -52,8 +53,6 @@ class Telegram extends NotificationProvider {
 
     /**
      * Escape special characters for Telegram MarkdownV2.
-     * If the input is a string, it escapes it.
-     * If the input is an object, it performs a shallow escape of all string properties.
      * @param {string|object} value The value to escape
      * @returns {string|object} The escaped value
      */
