@@ -11,6 +11,7 @@ class Telegram extends NotificationProvider {
         const okMsg = "Sent Successfully.";
         const url = notification.telegramServerUrl ?? "https://api.telegram.org";
 
+
         try {
             let params = {
                 chat_id: notification.telegramChatID,
@@ -24,7 +25,13 @@ class Telegram extends NotificationProvider {
             }
 
             if (notification.telegramUseTemplate) {
-                params.text = await this.renderTemplate(notification.telegramTemplate, msg, monitorJSON, heartbeatJSON, notification.telegramTemplateParseMode);
+                if (notification.telegramTemplateParseMode === "MarkdownV2") {
+                    msg = this.escapeMarkdownV2(msg);
+                    monitorJSON = this.escapeMarkdownV2(monitorJSON);
+                    heartbeatJSON = this.escapeMarkdownV2(heartbeatJSON);
+                }
+
+                params.text = await this.renderTemplate(notification.telegramTemplate, msg, monitorJSON, heartbeatJSON);
 
                 if (notification.telegramTemplateParseMode !== "plain") {
                     params.parse_mode = notification.telegramTemplateParseMode;
@@ -34,12 +41,34 @@ class Telegram extends NotificationProvider {
             let config = this.getAxiosConfigWithProxy();
 
             await axios.post(`${url}/bot${notification.telegramBotToken}/sendMessage`, params, config);
-            console.log("MarkdownV2:", params, config);
             return okMsg;
 
         } catch (error) {
             this.throwGeneralAxiosError(error);
         }
+    }
+
+    /**
+     * Escape special characters for Telegram MarkdownV2.
+     * If the input is a string, it escapes it.
+     * If the input is an object, it performs a shallow escape of all string properties.
+     * @param {string|object} value The value to escape
+     * @returns {string|object} The escaped value
+     */
+    escapeMarkdownV2(value) {
+        if (typeof value === "string") {
+            return value.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+        }
+        if (typeof value === "object" && value !== null) {
+            const copy = Array.isArray(value) ? [ ...value ] : { ...value };
+            for (const key in copy) {
+                if (typeof copy[key] === "string") {
+                    copy[key] = copy[key].replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+                }
+            }
+            return copy;
+        }
+        return value;
     }
 }
 
